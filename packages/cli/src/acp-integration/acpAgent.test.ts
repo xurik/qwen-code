@@ -855,6 +855,7 @@ import { buildAuthMethods } from './authMethods.js';
 import {
   CHANNEL_STARTUP_PROFILE_META_KEY,
   CHANNEL_STARTUP_PROFILE_VERSION,
+  NEW_SESSION_ID_META_KEY,
   PROMPT_CANCEL_METHOD,
   TODO_STOP_GUARD_QUEUE_RELEASE_METHOD,
 } from '@qwen-code/acp-bridge/bridgeTypes';
@@ -2782,6 +2783,71 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
     }) as AgentLike;
     return { agent, agentPromise };
   }
+
+  it('uses the session id supplied through ACP metadata', async () => {
+    const requestedSessionId = '123e4567-e89b-42d3-a456-426614174000';
+    await setupSessionMocks(requestedSessionId);
+    const { agent, agentPromise } = await bootAcpAgent();
+
+    const response = await agent.newSession({
+      cwd: '/tmp',
+      mcpServers: [],
+      _meta: { [NEW_SESSION_ID_META_KEY]: requestedSessionId },
+    });
+
+    expect(vi.mocked(loadCliConfig).mock.calls.at(-1)?.[1]).toMatchObject({
+      sessionId: requestedSessionId,
+    });
+    expect(response).toMatchObject({ sessionId: requestedSessionId });
+
+    mockConnectionState.resolve();
+    await agentPromise;
+  });
+
+  it.each([42, '', 'not-a-uuid'])(
+    'rejects invalid session id metadata without loading config (%j)',
+    async (sessionId) => {
+      const { agent, agentPromise } = await bootAcpAgent();
+
+      await expect(
+        agent.newSession({
+          cwd: '/tmp',
+          mcpServers: [],
+          _meta: { [NEW_SESSION_ID_META_KEY]: sessionId },
+        }),
+      ).rejects.toThrow('Invalid session id in ACP metadata');
+
+      expect(loadCliConfig).not.toHaveBeenCalled();
+      mockConnectionState.resolve();
+      await agentPromise;
+    },
+  );
+
+  it('maps an existing requested session id to a writer conflict', async () => {
+    const requestedSessionId = '123e4567-e89b-42d3-a456-426614174000';
+    await setupSessionMocks(requestedSessionId);
+    vi.mocked(loadCliConfig).mockRejectedValue(
+      Object.assign(new Error('already exists'), {
+        rpcCode: -32020,
+        errorKind: 'session_writer_conflict',
+      }),
+    );
+    const { agent, agentPromise } = await bootAcpAgent();
+
+    await expect(
+      agent.newSession({
+        cwd: '/tmp',
+        mcpServers: [],
+        _meta: { [NEW_SESSION_ID_META_KEY]: requestedSessionId },
+      }),
+    ).rejects.toMatchObject({
+      code: -32020,
+      data: { errorKind: 'session_writer_conflict' },
+    });
+
+    mockConnectionState.resolve();
+    await agentPromise;
+  });
 
   it('treats an idle session cancellation as a no-op', async () => {
     await setupSessionMocks('session-idle-cancel');

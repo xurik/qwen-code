@@ -104,6 +104,7 @@ import {
   LOAD_REPLAY_MODE_META_KEY,
   LOAD_REPLAY_PAGE_SIZE_META_KEY,
   LOAD_REPLAY_VERSION,
+  NEW_SESSION_ID_META_KEY,
   PROMPT_CANCEL_METHOD,
   TODO_STOP_GUARD_QUEUE_RELEASE_METHOD,
 } from './bridgeTypes.js';
@@ -2601,8 +2602,12 @@ export function createAcpSessionBridge(opts: BridgeOptions): AcpSessionBridge {
                 telemetry.injectPromptContext({
                   cwd: boundWorkspace,
                   mcpServers: [],
-                  ...(requestedSessionId
-                    ? { _meta: { 'qwen-code.sessionId': requestedSessionId } }
+                  ...(requestedSessionId !== undefined
+                    ? {
+                        _meta: {
+                          [NEW_SESSION_ID_META_KEY]: requestedSessionId,
+                        },
+                      }
                     : {}),
                 }),
               ),
@@ -4962,6 +4967,16 @@ export function createAcpSessionBridge(opts: BridgeOptions): AcpSessionBridge {
       // still needs the realpath to compare correctly.
       const workspaceKey = resolveWorkspaceKey(req.workspaceCwd);
 
+      if (
+        req.sessionId !== undefined &&
+        (typeof req.sessionId !== 'string' || req.sessionId.length === 0)
+      ) {
+        throw new InvalidSessionMetadataError(
+          'sessionId',
+          'must be a non-empty string',
+        );
+      }
+
       // Resolve the effective scope for THIS call. A per-request
       // `req.sessionScope` overrides the daemon-wide default; omitting
       // it falls back to `defaultSessionScope`. The string-validation
@@ -4995,6 +5010,15 @@ export function createAcpSessionBridge(opts: BridgeOptions): AcpSessionBridge {
             throw new SessionNotFoundError(
               existing.sessionId,
               'The session is closing; retry after close completes',
+            );
+          }
+          if (
+            req.sessionId !== undefined &&
+            req.sessionId !== existing.sessionId
+          ) {
+            throw new InvalidSessionMetadataError(
+              'sessionId',
+              `does not match the existing single-scope session "${existing.sessionId}"`,
             );
           }
           // BRSCi: bump attach counter BEFORE any await so the
@@ -5068,6 +5092,15 @@ export function createAcpSessionBridge(opts: BridgeOptions): AcpSessionBridge {
         const inFlight = inFlightSpawns.get(workspaceKey);
         if (inFlight) {
           const session = await inFlight;
+          if (
+            req.sessionId !== undefined &&
+            req.sessionId !== session.sessionId
+          ) {
+            throw new InvalidSessionMetadataError(
+              'sessionId',
+              `does not match the in-flight single-scope session "${session.sessionId}"`,
+            );
+          }
           // BRSCi: bump attach counter SYNCHRONOUSLY in the same
           // microtask the in-flight spawn resolves to us, BEFORE
           // any further await. The spawn-owner's route handler

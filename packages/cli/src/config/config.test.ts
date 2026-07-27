@@ -28,6 +28,7 @@ const mockSessionServiceInstance = vi.hoisted(() => ({
   loadSession: vi.fn(),
   forkSession: vi.fn(),
   sessionExists: vi.fn(),
+  sessionExistsInAnyState: vi.fn(),
 }));
 const mockSessionServiceCtor = vi.hoisted(() =>
   vi.fn(() => mockSessionServiceInstance),
@@ -1011,6 +1012,7 @@ describe('loadCliConfig', () => {
       copiedCount: 1,
     });
     mockSessionServiceInstance.sessionExists.mockResolvedValue(false);
+    mockSessionServiceInstance.sessionExistsInAnyState.mockResolvedValue(false);
     vi.mocked(os.homedir).mockReturnValue('/mock/home/user');
     vi.stubEnv('GEMINI_API_KEY', 'test-api-key');
     resetMcpApprovalsForTesting();
@@ -1480,6 +1482,18 @@ describe('loadCliConfig', () => {
     expect(mockSessionServiceInstance.loadSession).toHaveBeenCalledWith(
       config.getSessionId(),
     );
+  });
+
+  it('throws instead of exiting when an ACP session id already exists', async () => {
+    const sessionId = '123e4567-e89b-42d3-a456-426614174000';
+    mockSessionServiceInstance.sessionExistsInAnyState.mockResolvedValue(true);
+    const exit = vi.spyOn(process, 'exit');
+
+    await expect(
+      loadCliConfig({}, { acp: true, sessionId } as CliArgs),
+    ).rejects.toBeInstanceOf(ServerConfig.SessionWriterConflictError);
+
+    expect(exit).not.toHaveBeenCalled();
   });
 
   it('should explain when --fork-session fails to copy the source session', async () => {

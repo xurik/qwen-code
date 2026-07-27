@@ -61,6 +61,7 @@ import { TurnBoundaryCompactionEngine } from './compactionEngine.js';
 import {
   CHANNEL_STARTUP_PROFILE_META_KEY,
   CHANNEL_STARTUP_PROFILE_VERSION,
+  NEW_SESSION_ID_META_KEY,
 } from './bridgeTypes.js';
 import {
   ApprovalMode,
@@ -647,6 +648,42 @@ describe('createAcpSessionBridge', () => {
     await bridge.shutdown();
   });
 
+  it('forwards a requested session id through ACP metadata', async () => {
+    const requestedSessionId = '123e4567-e89b-42d3-a456-426614174000';
+    const handle = makeChannel({
+      newSessionImpl: (params) => ({
+        sessionId: String(params._meta?.[NEW_SESSION_ID_META_KEY]),
+      }),
+    });
+    const bridge = makeBridge({ channelFactory: async () => handle.channel });
+
+    const session = await bridge.spawnOrAttach({
+      workspaceCwd: WS_A,
+      sessionScope: 'thread',
+      sessionId: requestedSessionId,
+    });
+
+    expect(handle.agent.newSessionCalls[0]).toMatchObject({
+      _meta: { [NEW_SESSION_ID_META_KEY]: requestedSessionId },
+    });
+    expect(session.sessionId).toBe(requestedSessionId);
+
+    await bridge.closeSession(session.sessionId);
+    await bridge.shutdown();
+  });
+
+  it('rejects an empty requested session id before calling ACP', async () => {
+    const handle = makeChannel();
+    const bridge = makeBridge({ channelFactory: async () => handle.channel });
+
+    await expect(
+      bridge.spawnOrAttach({ workspaceCwd: WS_A, sessionId: '' }),
+    ).rejects.toBeInstanceOf(InvalidSessionMetadataError);
+
+    expect(handle.agent.newSessionCalls).toEqual([]);
+    await bridge.shutdown();
+  });
+
   it('does not emit another registration for attach-only spawnOrAttach calls', async () => {
     const events: Array<{ type: string; sessionId: string }> = [];
     const bridge = makeBridge({
@@ -668,6 +705,53 @@ describe('createAcpSessionBridge', () => {
     ]);
 
     await bridge.closeSession(first.sessionId);
+    await bridge.shutdown();
+  });
+
+  it('rejects a requested id that differs from a live single-scope session', async () => {
+    const bridge = makeBridge({
+      channelFactory: async () => makeChannel().channel,
+    });
+    const first = await bridge.spawnOrAttach({ workspaceCwd: WS_A });
+
+    await expect(
+      bridge.spawnOrAttach({
+        workspaceCwd: WS_A,
+        sessionId: '123e4567-e89b-42d3-a456-426614174000',
+      }),
+    ).rejects.toBeInstanceOf(InvalidSessionMetadataError);
+
+    expect(bridge.sessionCount).toBe(1);
+    expect(bridge.getDaemonStatusSnapshot().sessions[0]?.attachCount).toBe(0);
+    await bridge.closeSession(first.sessionId);
+    await bridge.shutdown();
+  });
+
+  it('rejects a requested id that differs from an in-flight single-scope session', async () => {
+    const release = deferred<void>();
+    const handle = makeChannel({
+      newSessionImpl: async () => {
+        await release.promise;
+        return { sessionId: 'first-session' };
+      },
+    });
+    const bridge = makeBridge({ channelFactory: async () => handle.channel });
+    const first = bridge.spawnOrAttach({ workspaceCwd: WS_A });
+    await vi.waitFor(() => {
+      expect(handle.agent.newSessionCalls).toHaveLength(1);
+    });
+    const mismatch = bridge.spawnOrAttach({
+      workspaceCwd: WS_A,
+      sessionId: '123e4567-e89b-42d3-a456-426614174000',
+    });
+
+    release.resolve();
+    const session = await first;
+    await expect(mismatch).rejects.toBeInstanceOf(InvalidSessionMetadataError);
+
+    expect(bridge.sessionCount).toBe(1);
+    expect(bridge.getDaemonStatusSnapshot().sessions[0]?.attachCount).toBe(0);
+    await bridge.closeSession(session.sessionId);
     await bridge.shutdown();
   });
 

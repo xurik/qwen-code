@@ -198,6 +198,7 @@ import {
   buildDisabledSkillNamesProvider,
   loadCliConfig,
 } from '../config/config.js';
+import { isValidSessionId } from '../config/session-id.js';
 import { resolveSkillSettings } from '../config/skill-settings.js';
 import {
   createWorkspaceMemoryExtractionErrorLogger,
@@ -299,6 +300,7 @@ import {
   LOAD_REPLAY_MODE_META_KEY,
   LOAD_REPLAY_PAGE_SIZE_META_KEY,
   LOAD_REPLAY_VERSION,
+  NEW_SESSION_ID_META_KEY,
   PROMPT_CANCEL_METHOD,
   TODO_STOP_GUARD_QUEUE_RELEASE_METHOD,
   type ClientMcpOverWsRuntimeConfig,
@@ -3918,11 +3920,17 @@ class QwenAgent implements Agent {
 
   async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
     const { cwd, mcpServers } = params;
-    // Extract caller-supplied session id from ACP _meta extension (#7831).
-    const requestedSessionId =
-      typeof params._meta?.['qwen-code.sessionId'] === 'string'
-        ? (params._meta['qwen-code.sessionId'] as string)
-        : undefined;
+    const rawSessionId = params._meta?.[NEW_SESSION_ID_META_KEY];
+    if (
+      rawSessionId !== undefined &&
+      (typeof rawSessionId !== 'string' || !isValidSessionId(rawSessionId))
+    ) {
+      throw RequestError.invalidParams(
+        undefined,
+        'Invalid session id in ACP metadata',
+      );
+    }
+    const requestedSessionId = rawSessionId as string | undefined;
     const parentContext = extractDaemonTraceContext(params);
     return await withDaemonSpan(
       'qwen-code.daemon.session_start',

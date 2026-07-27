@@ -8478,6 +8478,52 @@ describe('createServeApp', () => {
         .send({});
       expect(res.status).toBe(200);
       expect(bridge.calls[0]?.workspaceCwd).toBe(WS_BOUND);
+      expect(bridge.calls[0]).not.toHaveProperty('sessionId');
+    });
+
+    it('forwards a caller-supplied session id to the selected runtime', async () => {
+      const bridge = fakeBridge();
+      const app = createServeApp(
+        { ...baseOpts, workspace: WS_BOUND },
+        undefined,
+        { bridge },
+      );
+      const sessionId = '123e4567-e89b-42d3-a456-426614174000-agent-rest-test';
+
+      const res = await request(app)
+        .post('/session')
+        .set('Host', `127.0.0.1:${baseOpts.port}`)
+        .send({ sessionId, sessionScope: 'thread' });
+
+      expect(res.status).toBe(200);
+      expect(bridge.calls[0]).toMatchObject({
+        workspaceCwd: WS_BOUND,
+        sessionId,
+        sessionScope: 'thread',
+      });
+    });
+
+    it.each([
+      ['null', null],
+      ['non-string', 42],
+      ['empty', ''],
+      ['malformed', 'not-a-uuid'],
+    ])('400 for a %s sessionId', async (_label, sessionId) => {
+      const bridge = fakeBridge();
+      const app = createServeApp(
+        { ...baseOpts, workspace: WS_BOUND },
+        undefined,
+        { bridge },
+      );
+
+      const res = await request(app)
+        .post('/session')
+        .set('Host', `127.0.0.1:${baseOpts.port}`)
+        .send({ sessionId });
+
+      expect(res.status).toBe(400);
+      expect(res.body).toMatchObject({ code: 'invalid_session_id' });
+      expect(bridge.calls).toEqual([]);
     });
 
     it('returns retryable unavailable while the only workspace runtime is being replaced', async () => {

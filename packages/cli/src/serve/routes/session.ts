@@ -33,6 +33,7 @@ import {
 import type { SessionArtifactInput } from '@qwen-code/acp-bridge/sessionArtifacts';
 import { parseSessionSource } from '@qwen-code/acp-bridge';
 import type { Application, Request, RequestHandler, Response } from 'express';
+import { isValidSessionId } from '../../config/session-id.js';
 import { writeStderrLine } from '../../utils/stdioHelpers.js';
 import { isChannelDeliveryError } from '../channel-delivery-ipc.js';
 import { parseChannelDelivery } from '../channel-delivery.js';
@@ -1259,20 +1260,13 @@ export function registerSessionRoutes(
     const clientId = parseClientIdHeader(req, res);
     if (clientId === null) return;
 
-    // Optional caller-supplied session id. Validated at the route boundary
-    // so a 400 surfaces before touching the bridge. The core Config
-    // constructor uses it verbatim (falling back to randomUUID when absent).
     const rawSessionId = body['sessionId'];
     let requestedSessionId: string | undefined;
-    if (rawSessionId !== undefined && rawSessionId !== null) {
-      if (
-        typeof rawSessionId !== 'string' ||
-        rawSessionId.length === 0 ||
-        rawSessionId.length > 128
-      ) {
+    if (rawSessionId !== undefined) {
+      if (typeof rawSessionId !== 'string' || !isValidSessionId(rawSessionId)) {
         res.status(400).json({
           error:
-            '`sessionId` must be a non-empty string (max 128 chars) when provided',
+            '`sessionId` must be a valid UUID, optionally followed by "-agent-{suffix}"',
           code: 'invalid_session_id',
         });
         return;
