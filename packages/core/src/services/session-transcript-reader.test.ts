@@ -119,6 +119,20 @@ describe('SessionTranscriptReader', () => {
     return encodeSessionTranscriptCursor(state, workspaceDir);
   }
 
+  it('resolves transcript files for agent-suffixed session ids', () => {
+    const agentSessionId = `${sessionId}-agent-worker.1`;
+    const reader = new SessionTranscriptReader(workspaceDir);
+
+    expect(reader.getSessionFilePath(agentSessionId)).toBe(
+      path.join(
+        new Storage(workspaceDir).getProjectDir(),
+        'chats',
+        `${agentSessionId}.jsonl`,
+      ),
+    );
+    expect(() => reader.getSessionFilePath('../escape')).toThrow(/ENOENT/);
+  });
+
   it('rejects an empty transcript snapshot', async () => {
     await writeRawTranscript('');
 

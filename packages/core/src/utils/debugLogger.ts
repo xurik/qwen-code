@@ -10,6 +10,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import util from 'node:util';
 import { Storage } from '../config/storage.js';
 import { updateSymlink } from './symlink.js';
+import { isValidSessionFileName } from './session-id.js';
 import {
   getTraceContext,
   type TraceContext,
@@ -146,14 +147,11 @@ export function resetDebugLoggingState(): void {
 }
 
 const DEBUG_LATEST_ALIAS = 'latest';
-const SESSION_ID_PATTERN =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function updateLatestDebugLogAlias(sessionId: string): void {
   if (!isDebugLogFileEnabled()) {
     return;
   }
-  if (!SESSION_ID_PATTERN.test(sessionId)) {
+  if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
     return;
   }
 

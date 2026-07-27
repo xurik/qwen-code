@@ -14048,7 +14048,11 @@ describe('createAcpSessionBridge', () => {
 
     it('calls freshSessionAdmission for fresh spawns and releases after registration', async () => {
       const releases: string[] = [];
-      const contexts: Array<{ operation: string; workspaceCwd: string }> = [];
+      const contexts: Array<{
+        operation: string;
+        workspaceCwd: string;
+        sessionId?: string;
+      }> = [];
       const bridge = makeBridge({
         channelFactory: async () => makeChannel().channel,
         sessionScope: 'thread',
@@ -14060,10 +14064,11 @@ describe('createAcpSessionBridge', () => {
         },
       });
 
-      await bridge.spawnOrAttach({ workspaceCwd: WS_A });
+      const sessionId = '123e4567-e89b-12d3-a456-426614174000';
+      await bridge.spawnOrAttach({ workspaceCwd: WS_A, sessionId });
 
       expect(contexts).toMatchObject([
-        { operation: 'spawn', workspaceCwd: WS_A },
+        { operation: 'spawn', workspaceCwd: WS_A, sessionId },
       ]);
       expect(releases).toEqual(['spawn']);
       await bridge.shutdown();

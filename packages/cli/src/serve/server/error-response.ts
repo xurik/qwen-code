@@ -18,6 +18,10 @@ import {
 import type { Response } from 'express';
 import { writeStderrLine } from '../../utils/stdioHelpers.js';
 import {
+  SESSION_ID_EXISTS_ERROR_KIND,
+  SESSION_ID_EXISTS_MESSAGE,
+} from '../../config/session-id.js';
+import {
   BranchWhilePromptActiveError,
   CancelSentinelCollisionError,
   CdWhilePromptActiveError,
@@ -566,6 +570,16 @@ export function sendBridgeError(
     const data = (err as { data?: unknown }).data;
     if (data && typeof data === 'object') {
       const kind = (data as { errorKind?: unknown }).errorKind;
+      if (kind === SESSION_ID_EXISTS_ERROR_KIND) {
+        const sessionId = (data as { sessionId?: unknown }).sessionId;
+        res.status(409).json({
+          error: SESSION_ID_EXISTS_MESSAGE,
+          code: kind,
+          errorKind: kind,
+          ...(typeof sessionId === 'string' ? { sessionId } : {}),
+        });
+        return;
+      }
       if (
         kind === 'session_writer_conflict' ||
         kind === 'session_writer_lost' ||

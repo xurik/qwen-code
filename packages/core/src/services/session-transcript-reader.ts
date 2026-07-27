@@ -20,6 +20,7 @@ import {
   validateTranscriptRecord,
   walkTranscriptUuidChain,
 } from '../utils/transcript-records.js';
+import { isValidSessionFileName } from '../utils/session-id.js';
 
 export const SESSION_TRANSCRIPT_DEFAULT_LIMIT = 100;
 export const SESSION_TRANSCRIPT_MAX_LIMIT = 500;
@@ -151,7 +152,6 @@ const INDEX_STRING_BYTES = 2;
 const READ_CHUNK_SIZE = 64 * 1024;
 const CURSOR_HMAC_KEY_BYTES = 32;
 const CURSOR_HMAC_KEY_FILENAME = 'session-transcript-cursor-key';
-const SESSION_TRANSCRIPT_SESSION_ID_PATTERN = /^[0-9a-fA-F-]{32,36}$/;
 
 const debugLogger = createDebugLogger('SESSION_TRANSCRIPT');
 
@@ -970,7 +970,7 @@ export class SessionTranscriptReader {
   }
 
   getSessionFilePath(sessionId: string): string {
-    if (!SESSION_TRANSCRIPT_SESSION_ID_PATTERN.test(sessionId)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       debugLogger.debug(`invalid session id for transcript read: ${sessionId}`);
       throw makeSessionTranscriptNotFoundError(sessionId);
     }

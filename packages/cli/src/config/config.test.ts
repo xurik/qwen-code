@@ -19,6 +19,7 @@ import type { Settings } from './settings.js';
 import * as ServerConfig from '@qwen-code/qwen-code-core';
 import { isWorkspaceTrusted } from './trustedFolders.js';
 import { resetMcpApprovalsForTesting } from './mcpApprovals.js';
+import { SessionIdExistsError } from './session-id.js';
 
 const mockWriteStderrLine = vi.hoisted(() => vi.fn());
 const mockWriteStdoutLine = vi.hoisted(() => vi.fn());
@@ -1491,7 +1492,11 @@ describe('loadCliConfig', () => {
 
     await expect(
       loadCliConfig({}, { acp: true, sessionId } as CliArgs),
-    ).rejects.toBeInstanceOf(ServerConfig.SessionWriterConflictError);
+    ).rejects.toMatchObject({
+      name: SessionIdExistsError.name,
+      errorKind: 'session_id_exists',
+      sessionId,
+    });
 
     expect(exit).not.toHaveBeenCalled();
   });

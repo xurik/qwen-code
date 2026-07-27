@@ -59,6 +59,11 @@ import {
 import { writeStderrLine } from '../../utils/stdioHelpers.js';
 import { MAX_WORKSPACE_PATH_LENGTH } from '../fs/paths.js';
 import {
+  SESSION_ID_EXISTS_ERROR_KIND,
+  SESSION_ID_EXISTS_MESSAGE,
+  SESSION_ID_EXISTS_RPC_CODE,
+} from '../../config/session-id.js';
+import {
   MAX_READ_BYTES,
   type WorkspaceFileSystemFactory,
 } from '../fs/index.js';
@@ -143,7 +148,11 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-const SESSION_WRITER_RPC_ERRORS = {
+const SESSION_RPC_ERRORS = {
+  [SESSION_ID_EXISTS_ERROR_KIND]: {
+    code: SESSION_ID_EXISTS_RPC_CODE,
+    message: SESSION_ID_EXISTS_MESSAGE,
+  },
   session_writer_conflict: {
     code: SESSION_WRITER_RPC_CODES.session_writer_conflict,
     message: 'This session is already open in another Qwen process.',
@@ -162,31 +171,36 @@ const SESSION_WRITER_RPC_ERRORS = {
   },
 } as const;
 
-function sessionWriterRpcError(err: unknown):
+function sessionRpcError(err: unknown):
   | {
       code: number;
       message: string;
-      data: { errorKind: keyof typeof SESSION_WRITER_RPC_ERRORS };
+      data: {
+        errorKind: keyof typeof SESSION_RPC_ERRORS;
+        sessionId?: string;
+      };
     }
   | undefined {
   if (!err || typeof err !== 'object') return undefined;
   const candidate = err as Record<string, unknown>;
   const data = isObject(candidate['data']) ? candidate['data'] : undefined;
   const errorKind = data?.['errorKind'] ?? candidate['errorKind'];
-  if (
-    typeof errorKind !== 'string' ||
-    !(errorKind in SESSION_WRITER_RPC_ERRORS)
-  ) {
+  if (typeof errorKind !== 'string' || !(errorKind in SESSION_RPC_ERRORS)) {
     return undefined;
   }
-  const typedKind = errorKind as keyof typeof SESSION_WRITER_RPC_ERRORS;
-  const expected = SESSION_WRITER_RPC_ERRORS[typedKind];
+  const typedKind = errorKind as keyof typeof SESSION_RPC_ERRORS;
+  const expected = SESSION_RPC_ERRORS[typedKind];
   const code = candidate['code'] ?? candidate['rpcCode'];
   if (code !== expected.code) return undefined;
   return {
     code: expected.code,
     message: expected.message,
-    data: { errorKind: typedKind },
+    data: {
+      errorKind: typedKind,
+      ...(typeof data?.['sessionId'] === 'string'
+        ? { sessionId: data['sessionId'] }
+        : {}),
+    },
   };
 }
 
@@ -565,8 +579,8 @@ function toRpcError(err: unknown): {
   message: string;
   data?: Record<string, unknown>;
 } {
-  const writerError = sessionWriterRpcError(err);
-  if (writerError) return writerError;
+  const sessionError = sessionRpcError(err);
+  if (sessionError) return sessionError;
   if (err instanceof AcpParamError || err instanceof InvalidCursorError) {
     return { code: RPC.INVALID_PARAMS, message: err.message };
   }

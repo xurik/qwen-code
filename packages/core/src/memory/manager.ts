@@ -41,6 +41,7 @@ import type { Config } from '../config/config.js';
 import { Storage } from '../config/storage.js';
 import { atomicWriteFile } from '../utils/atomicFileWrite.js';
 import { createDebugLogger } from '../utils/debugLogger.js';
+import { isValidSessionFileName } from '../utils/session-id.js';
 import {
   logMemoryDream,
   logMemoryExtract,
@@ -332,8 +333,6 @@ function hoursSince(lastDreamAt: string | undefined, now: Date): number | null {
   return (now.getTime() - timestamp) / (1000 * 60 * 60);
 }
 
-const SESSION_FILE_PATTERN = /^[0-9a-fA-F-]{32,36}\.jsonl$/;
-
 async function defaultSessionScanner(
   projectRoot: string,
   sinceMs: number,
@@ -349,7 +348,7 @@ async function defaultSessionScanner(
   const results: string[] = [];
   await Promise.all(
     names.map(async (name) => {
-      if (!SESSION_FILE_PATTERN.test(name)) return;
+      if (!isValidSessionFileName(name)) return;
       const sessionId = name.slice(0, -'.jsonl'.length);
       if (sessionId === excludeSessionId) return;
       try {

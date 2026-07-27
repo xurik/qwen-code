@@ -2303,6 +2303,21 @@ describe('SessionService', () => {
       expect(exists).toBe(true);
     });
 
+    it('should find an agent-suffixed session after persistence', async () => {
+      const agentSessionId = `${sessionIdA}-agent-worker.1`;
+      vi.mocked(jsonl.readLines).mockResolvedValue([
+        { ...recordA1, sessionId: agentSessionId },
+      ]);
+
+      await expect(sessionService.sessionExists(agentSessionId)).resolves.toBe(
+        true,
+      );
+      expect(jsonl.readLines).toHaveBeenCalledWith(
+        expect.stringContaining(`${agentSessionId}.jsonl`),
+        1,
+      );
+    });
+
     it('should return false for non-existing session', async () => {
       vi.mocked(jsonl.readLines).mockResolvedValue([]);
 

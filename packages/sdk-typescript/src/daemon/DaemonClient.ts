@@ -467,6 +467,12 @@ export interface CreateSessionRequest {
   workspaceCwd?: string;
   modelServiceId?: string;
   /**
+   * Caller-supplied ID for a new session. Requires the daemon capability
+   * `session_id_override`. The daemon returns `409 session_id_exists` when a
+   * persisted ID already exists and a writer conflict for a live owner.
+   */
+  sessionId?: string;
+  /**
    * Per-request session-scope override. The production daemon defaults
    * to `'single'`, which coalesces same-workspace `POST /session` calls
    * into one shared session; passing `sessionScope: 'thread'` here
@@ -2117,6 +2123,9 @@ export class DaemonClient {
     req: CreateSessionRequest,
     clientId?: string,
   ): Promise<DaemonSession> {
+    if (req.sessionId !== undefined) {
+      await this.requireCapability('session_id_override');
+    }
     if (req.sourceType !== undefined || req.sourceId !== undefined) {
       await this.requireCapability('session_source_metadata');
     }
@@ -2140,6 +2149,7 @@ export class DaemonClient {
         body: JSON.stringify({
           cwd: req.workspaceCwd,
           ...(req.modelServiceId ? { modelServiceId: req.modelServiceId } : {}),
+          ...(req.sessionId !== undefined ? { sessionId: req.sessionId } : {}),
           // `!== undefined` (not truthy) so a buggy caller passing
           // `sessionScope: '' | null` doesn't get the field silently
           // erased on the wire — let the daemon's `400

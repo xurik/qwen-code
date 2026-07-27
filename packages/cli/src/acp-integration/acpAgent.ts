@@ -5,6 +5,7 @@
  */
 
 import {
+  isValidSessionFileName,
   APPROVAL_MODE_INFO,
   APPROVAL_MODES,
   AuthType,
@@ -198,7 +199,10 @@ import {
   buildDisabledSkillNamesProvider,
   loadCliConfig,
 } from '../config/config.js';
-import { isValidSessionId } from '../config/session-id.js';
+import {
+  isValidSessionId,
+  SessionIdExistsError,
+} from '../config/session-id.js';
 import { resolveSkillSettings } from '../config/skill-settings.js';
 import {
   createWorkspaceMemoryExtractionErrorLogger,
@@ -6783,8 +6787,6 @@ class QwenAgent implements Agent {
     const requestedCwd =
       typeof params['cwd'] === 'string' ? params['cwd'] : undefined;
     const cwd = requestedCwd || process.cwd();
-    const SESSION_ID_RE = /^[0-9a-fA-F-]{32,36}$/;
-
     switch (method) {
       case PROMPT_CANCEL_METHOD: {
         const sessionId = params['sessionId'];
@@ -7101,7 +7103,10 @@ class QwenAgent implements Agent {
       }
       case SERVE_STATUS_EXT_METHODS.sessionTranscript: {
         const sessionId = params['sessionId'];
-        if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
+        if (
+          typeof sessionId !== 'string' ||
+          !isValidSessionFileName(`${sessionId}.jsonl`)
+        ) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -7282,7 +7287,10 @@ class QwenAgent implements Agent {
       }
       case SERVE_STATUS_EXT_METHODS.sessionRewindSnapshots: {
         const sessionId = params['sessionId'];
-        if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
+        if (
+          typeof sessionId !== 'string' ||
+          !isValidSessionFileName(`${sessionId}.jsonl`)
+        ) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9367,7 +9375,7 @@ class QwenAgent implements Agent {
       }
       case 'deleteSession': {
         const sessionId = params['sessionId'] as string;
-        if (!sessionId || !SESSION_ID_RE.test(sessionId)) {
+        if (!sessionId || !isValidSessionFileName(`${sessionId}.jsonl`)) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9386,7 +9394,7 @@ class QwenAgent implements Agent {
       case 'renameSession': {
         const sessionId = params['sessionId'] as string;
         const title = params['title'] as string;
-        if (!sessionId || !SESSION_ID_RE.test(sessionId)) {
+        if (!sessionId || !isValidSessionFileName(`${sessionId}.jsonl`)) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9433,7 +9441,7 @@ class QwenAgent implements Agent {
       case 'rewindSession':
       case SERVE_CONTROL_EXT_METHODS.sessionRewind: {
         const sessionId = params['sessionId'] as string;
-        if (!sessionId || !SESSION_ID_RE.test(sessionId)) {
+        if (!sessionId || !isValidSessionFileName(`${sessionId}.jsonl`)) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9585,7 +9593,7 @@ class QwenAgent implements Agent {
       }
       case 'qwen/session/loadUpdates': {
         const sessionId = params['sessionId'] as string;
-        if (!sessionId || !SESSION_ID_RE.test(sessionId)) {
+        if (!sessionId || !isValidSessionFileName(`${sessionId}.jsonl`)) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9647,7 +9655,7 @@ class QwenAgent implements Agent {
       case 'restoreSessionHistory': {
         const sessionId = params['sessionId'] as string;
         const history = params['history'];
-        if (!sessionId || !SESSION_ID_RE.test(sessionId)) {
+        if (!sessionId || !isValidSessionFileName(`${sessionId}.jsonl`)) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -9684,7 +9692,10 @@ class QwenAgent implements Agent {
       }
       case SERVE_CONTROL_EXT_METHODS.sessionBranch: {
         const sessionId = params['sessionId'];
-        if (typeof sessionId !== 'string' || !SESSION_ID_RE.test(sessionId)) {
+        if (
+          typeof sessionId !== 'string' ||
+          !isValidSessionFileName(`${sessionId}.jsonl`)
+        ) {
           throw RequestError.invalidParams(
             undefined,
             'Invalid or missing sessionId',
@@ -10330,6 +10341,12 @@ class QwenAgent implements Agent {
         );
       });
     } catch (error) {
+      if (error instanceof SessionIdExistsError) {
+        throw new RequestError(error.rpcCode, error.message, {
+          errorKind: error.errorKind,
+          sessionId: error.sessionId,
+        });
+      }
       const writerError = getSessionWriterError(error);
       if (writerError) {
         throw new RequestError(writerError.rpcCode, writerError.message, {

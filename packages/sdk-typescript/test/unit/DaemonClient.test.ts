@@ -1958,6 +1958,54 @@ describe('DaemonClient', () => {
       }
     });
 
+    it('forwards sessionId when the daemon advertises the override', async () => {
+      const { fetch, calls } = recordingFetch((request) =>
+        request.url.endsWith('/capabilities')
+          ? jsonResponse(200, {
+              v: 1,
+              mode: 'http-bridge',
+              features: ['session_id_override'],
+              transports: ['rest'],
+            })
+          : jsonResponse(200, {
+              sessionId: '123e4567-e89b-42d3-a456-426614174000',
+              workspaceCwd: '/work/a',
+              attached: false,
+            }),
+      );
+      const client = new DaemonClient({ baseUrl: 'http://daemon', fetch });
+      const sessionId = '123e4567-e89b-42d3-a456-426614174000';
+
+      await client.createOrAttachSession({
+        workspaceCwd: '/work/a',
+        sessionId,
+      });
+
+      const createCall = calls.find((call) => call.url.endsWith('/session'));
+      expect(JSON.parse(createCall!.body!)).toEqual({
+        cwd: '/work/a',
+        sessionId,
+      });
+    });
+
+    it('rejects sessionId when the daemon lacks the override capability', async () => {
+      const { fetch } = recordingFetch(() =>
+        jsonResponse(200, {
+          v: 1,
+          mode: 'http-bridge',
+          features: [],
+          transports: ['rest'],
+        }),
+      );
+      const client = new DaemonClient({ baseUrl: 'http://daemon', fetch });
+
+      await expect(
+        client.createOrAttachSession({
+          sessionId: '123e4567-e89b-42d3-a456-426614174000',
+        }),
+      ).rejects.toThrow('session_id_override');
+    });
+
     it('omits sessionScope from the body when the field is absent', async () => {
       // Backward-compat: a caller that doesn't set the field must not
       // surface a `sessionScope` key on the wire — old daemons reading
@@ -1975,6 +2023,7 @@ describe('DaemonClient', () => {
       await client.createOrAttachSession({ workspaceCwd: '/work/a' });
       const body = JSON.parse(calls[0]!.body!) as Record<string, unknown>;
       expect(body).not.toHaveProperty('sessionScope');
+      expect(body).not.toHaveProperty('sessionId');
     });
 
     it('throws on 400', async () => {

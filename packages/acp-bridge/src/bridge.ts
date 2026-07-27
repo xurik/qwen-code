@@ -5170,6 +5170,7 @@ export function createAcpSessionBridge(opts: BridgeOptions): AcpSessionBridge {
       const admission = reserveFreshSession({
         operation: 'spawn',
         workspaceCwd: workspaceKey,
+        ...(req.sessionId ? { sessionId: req.sessionId } : {}),
       });
       let admissionReleased = false;
       const releaseAdmissionOnce = () => {

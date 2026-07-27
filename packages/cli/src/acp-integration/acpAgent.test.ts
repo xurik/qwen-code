@@ -517,6 +517,22 @@ vi.mock('@qwen-code/qwen-code-core', async (importOriginal) => ({
     session_transcript_changed: -32022,
     session_writer_unavailable: -32023,
   },
+  isValidSessionId: vi.fn(
+    (value: string) =>
+      value.length <= 128 &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?:-agent-[a-z0-9_.-]+)?$/i.test(
+        value,
+      ),
+  ),
+  isValidSessionFileName: vi.fn(
+    (value: string) =>
+      /^[0-9a-f-]{32,36}\.jsonl$/i.test(value) ||
+      (value.endsWith('.jsonl') &&
+        value.length <= 134 &&
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-agent-[a-z0-9_.-]+\.jsonl$/i.test(
+          value,
+        )),
+  ),
   SessionWriterUnavailableError: class SessionWriterUnavailableError extends Error {
     readonly rpcCode = -32023;
     readonly errorKind = 'session_writer_unavailable';
@@ -2804,7 +2820,12 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
     await agentPromise;
   });
 
-  it.each([42, '', 'not-a-uuid'])(
+  it.each([
+    42,
+    '',
+    'not-a-uuid',
+    `123e4567-e89b-42d3-a456-426614174000-agent-${'a'.repeat(86)}`,
+  ])(
     'rejects invalid session id metadata without loading config (%j)',
     async (sessionId) => {
       const { agent, agentPromise } = await bootAcpAgent();
@@ -2823,14 +2844,12 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
     },
   );
 
-  it('maps an existing requested session id to a writer conflict', async () => {
+  it('maps an existing requested session id to session_id_exists', async () => {
     const requestedSessionId = '123e4567-e89b-42d3-a456-426614174000';
     await setupSessionMocks(requestedSessionId);
+    const { SessionIdExistsError } = await import('../config/session-id.js');
     vi.mocked(loadCliConfig).mockRejectedValue(
-      Object.assign(new Error('already exists'), {
-        rpcCode: -32020,
-        errorKind: 'session_writer_conflict',
-      }),
+      new SessionIdExistsError(requestedSessionId),
     );
     const { agent, agentPromise } = await bootAcpAgent();
 
@@ -2841,8 +2860,11 @@ describe('QwenAgent MCP SSE/HTTP support', () => {
         _meta: { [NEW_SESSION_ID_META_KEY]: requestedSessionId },
       }),
     ).rejects.toMatchObject({
-      code: -32020,
-      data: { errorKind: 'session_writer_conflict' },
+      code: -32024,
+      data: {
+        errorKind: 'session_id_exists',
+        sessionId: requestedSessionId,
+      },
     });
 
     mockConnectionState.resolve();

@@ -33,7 +33,10 @@ import {
 import type { SessionArtifactInput } from '@qwen-code/acp-bridge/sessionArtifacts';
 import { parseSessionSource } from '@qwen-code/acp-bridge';
 import type { Application, Request, RequestHandler, Response } from 'express';
-import { isValidSessionId } from '../../config/session-id.js';
+import {
+  isValidSessionId,
+  SESSION_ID_MAX_LENGTH,
+} from '../../config/session-id.js';
 import { writeStderrLine } from '../../utils/stdioHelpers.js';
 import { isChannelDeliveryError } from '../channel-delivery-ipc.js';
 import { parseChannelDelivery } from '../channel-delivery.js';
@@ -1266,7 +1269,8 @@ export function registerSessionRoutes(
       if (typeof rawSessionId !== 'string' || !isValidSessionId(rawSessionId)) {
         res.status(400).json({
           error:
-            '`sessionId` must be a valid UUID, optionally followed by "-agent-{suffix}"',
+            '`sessionId` must be a valid UUID, optionally followed by "-agent-{suffix}", ' +
+            `with at most ${SESSION_ID_MAX_LENGTH} characters`,
           code: 'invalid_session_id',
         });
         return;

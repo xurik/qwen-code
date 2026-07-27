@@ -171,6 +171,12 @@ public final class DaemonClient implements AutoCloseable {
                         "The daemon does not advertise session_scope_override; "
                                 + "the SDK cannot guarantee the requested session scope");
             }
+            if (request.hasSessionId()
+                    && !capabilities.supports("session_id_override")) {
+                throw new DaemonProtocolException(
+                        "The daemon does not advertise session_id_override; "
+                                + "the SDK cannot guarantee the requested session id");
+            }
             synchronized (lifecycleLock) {
                 ensureOpen();
             }

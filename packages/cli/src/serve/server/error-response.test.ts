@@ -86,4 +86,24 @@ describe('sendBridgeError session writer errors', () => {
       errorKind: 'session_writer_unavailable',
     });
   });
+
+  it('maps an existing requested id without misclassifying it as a writer conflict', () => {
+    const { response, status, json } = responseMock();
+    const sessionId = '123e4567-e89b-42d3-a456-426614174000';
+
+    sendBridgeError(
+      response,
+      Object.assign(new Error('private persistence details'), {
+        data: { errorKind: 'session_id_exists', sessionId },
+      }),
+    );
+
+    expect(status).toHaveBeenCalledWith(409);
+    expect(json).toHaveBeenCalledWith({
+      error: 'The requested session ID already exists.',
+      code: 'session_id_exists',
+      errorKind: 'session_id_exists',
+      sessionId,
+    });
+  });
 });

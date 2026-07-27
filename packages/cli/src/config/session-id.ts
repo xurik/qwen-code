@@ -4,12 +4,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * Accepts a standard UUID, or a UUID followed by `-agent-{suffix}` for
- * deterministic Arena agent sessions.
- */
-export function isValidSessionId(value: string): boolean {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(-agent-[a-zA-Z0-9_.-]+)?$/i.test(
-    value,
-  );
+export {
+  isValidSessionId,
+  SESSION_ID_MAX_LENGTH,
+} from '@qwen-code/qwen-code-core';
+
+export const SESSION_ID_EXISTS_RPC_CODE = -32024;
+export const SESSION_ID_EXISTS_ERROR_KIND = 'session_id_exists' as const;
+export const SESSION_ID_EXISTS_MESSAGE =
+  'The requested session ID already exists.';
+
+export class SessionIdExistsError extends Error {
+  override readonly name = 'SessionIdExistsError';
+  readonly rpcCode = SESSION_ID_EXISTS_RPC_CODE;
+  readonly errorKind = SESSION_ID_EXISTS_ERROR_KIND;
+  readonly httpStatus = 409;
+
+  constructor(readonly sessionId: string) {
+    super(SESSION_ID_EXISTS_MESSAGE);
+  }
 }

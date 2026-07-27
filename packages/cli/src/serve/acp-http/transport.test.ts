@@ -3860,6 +3860,42 @@ describe('ACP Streamable HTTP transport (over the wire)', () => {
     });
   });
 
+  it('session/load preserves session_id_exists RPC errors', async () => {
+    await withRuntimeDir(async () => {
+      const sessionId = '550e8400-e29b-41d4-a716-446655440323';
+      await writeStoredSession(sessionId);
+      bridge.loadError = Object.assign(
+        new Error('private persistence details'),
+        {
+          code: -32024,
+          data: { errorKind: 'session_id_exists', sessionId },
+        },
+      );
+
+      const connId = await initialize();
+      const connStream = await openStream(connId);
+      const got = takeFrames(connStream, 1);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      await post(connId, {
+        jsonrpc: '2.0',
+        id: 214,
+        method: 'session/load',
+        params: { sessionId },
+      });
+
+      const [frame] = await got;
+      expect(frame).toEqual({
+        id: 214,
+        error: {
+          code: -32024,
+          message: 'The requested session ID already exists.',
+          data: { errorKind: 'session_id_exists', sessionId },
+        },
+        jsonrpc: '2.0',
+      });
+    });
+  });
+
   it('session/load holds archive gate while restore is in flight', async () => {
     await withRuntimeDir(async () => {
       const sessionId = '550e8400-e29b-41d4-a716-446655440124';

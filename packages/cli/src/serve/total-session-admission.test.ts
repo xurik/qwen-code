@@ -6,14 +6,29 @@
 
 import { describe, expect, it } from 'vitest';
 import {
+  SessionNotFoundError,
   TotalSessionLimitExceededError,
   WorkspaceDrainingError,
 } from './acp-session-bridge.js';
+import { SessionWriterConflictError } from '@qwen-code/qwen-code-core';
 import { createTotalSessionAdmissionController } from './total-session-admission.js';
+
+function testBridge(sessionCount: number, sessionIds: string[] = []) {
+  const liveSessionIds = new Set(sessionIds);
+  return {
+    sessionCount,
+    getSessionSummary(sessionId: string) {
+      if (!liveSessionIds.has(sessionId)) {
+        throw new SessionNotFoundError(sessionId);
+      }
+      return {};
+    },
+  };
+}
 
 describe('createTotalSessionAdmissionController', () => {
   it('counts live bridge sessions plus in-flight reservations across runtimes', () => {
-    const bridges = [{ sessionCount: 1 }, { sessionCount: 0 }];
+    const bridges = [testBridge(1), testBridge(0)];
     const admission = createTotalSessionAdmissionController({
       maxTotalSessions: 2,
       getBridges: () => bridges,
@@ -51,7 +66,7 @@ describe('createTotalSessionAdmissionController', () => {
     for (const maxTotalSessions of [undefined, 0, Infinity]) {
       const admission = createTotalSessionAdmissionController({
         maxTotalSessions,
-        getBridges: () => [{ sessionCount: 99 }],
+        getBridges: () => [testBridge(99)],
       });
 
       const reservation = admission.admit({
@@ -66,7 +81,7 @@ describe('createTotalSessionAdmissionController', () => {
   it('ignores duplicate release calls', () => {
     const admission = createTotalSessionAdmissionController({
       maxTotalSessions: 1,
-      getBridges: () => [{ sessionCount: 0 }],
+      getBridges: () => [testBridge(0)],
     });
 
     const reservation = admission.admit({
@@ -121,6 +136,49 @@ describe('createTotalSessionAdmissionController', () => {
       workspaceCwd: '/work/a',
     });
     afterCompletion?.release();
+  });
+
+  it('rejects duplicate requested ids across live runtimes', () => {
+    const sessionId = '123e4567-e89b-12d3-a456-426614174000';
+    const admission = createTotalSessionAdmissionController({
+      getBridges: () => [testBridge(1, [sessionId]), testBridge(0)],
+    });
+
+    expect(() =>
+      admission.admit({
+        operation: 'spawn',
+        workspaceCwd: '/work/b',
+        sessionId,
+      }),
+    ).toThrow(SessionWriterConflictError);
+  });
+
+  it('reserves requested ids across concurrent runtime spawns', () => {
+    const sessionId = '123e4567-e89b-12d3-a456-426614174000';
+    const admission = createTotalSessionAdmissionController({
+      getBridges: () => [],
+    });
+    const reservation = admission.admit({
+      operation: 'spawn',
+      workspaceCwd: '/work/a',
+      sessionId,
+    });
+
+    expect(() =>
+      admission.admit({
+        operation: 'spawn',
+        workspaceCwd: '/work/b',
+        sessionId,
+      }),
+    ).toThrow(SessionWriterConflictError);
+
+    reservation?.release();
+    const nextReservation = admission.admit({
+      operation: 'spawn',
+      workspaceCwd: '/work/b',
+      sessionId,
+    });
+    nextReservation?.release();
   });
 
   it('does not let an old reservation erase a replacement runtime count', () => {

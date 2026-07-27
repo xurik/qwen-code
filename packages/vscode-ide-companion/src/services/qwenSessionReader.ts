@@ -9,7 +9,11 @@ import * as fs from 'fs';
 import * as path from 'path';
 import * as readline from 'readline';
 import * as crypto from 'crypto';
-import { getGitBranch, getProjectHash } from '@qwen-code/qwen-code-core';
+import {
+  getGitBranch,
+  getProjectHash,
+  isValidSessionFileName,
+} from '@qwen-code/qwen-code-core';
 import { getRuntimeBaseDir } from '../utils/paths.js';
 import { truncatePanelTitle } from '../webview/utils/panelTitleUtils.js';
 
@@ -113,9 +117,7 @@ export class QwenSessionReader {
       (f) => f.startsWith('session-') && f.endsWith('.json'),
     );
 
-    const jsonlSessionFiles = files.filter((f) =>
-      /^[0-9a-fA-F-]{32,36}\.jsonl$/.test(f),
-    );
+    const jsonlSessionFiles = files.filter(isValidSessionFileName);
 
     for (const file of jsonSessionFiles) {
       const filePath = path.join(chatsDir, file);

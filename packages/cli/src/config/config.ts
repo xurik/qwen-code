@@ -21,7 +21,6 @@ import {
   InputFormat,
   OutputFormat,
   SessionService,
-  SessionWriterConflictError,
   ideContextStore,
   type ResumedSessionData,
   type LspClient,
@@ -70,7 +69,7 @@ import { reviewCommand } from '../commands/review.js';
 import { serveCommand } from '../commands/serve.js';
 import { sessionsCommand } from '../commands/sessions.js';
 import { updateCommand } from '../commands/update.js';
-import { isValidSessionId } from './session-id.js';
+import { isValidSessionId, SessionIdExistsError } from './session-id.js';
 
 export { isValidSessionId } from './session-id.js';
 
@@ -1978,7 +1977,7 @@ export async function loadCliConfig(
     if (exists) {
       const message = `Error: Session Id ${argv['sessionId']} already exists (active or archived). Delete or unarchive it first.`;
       if (isAcpMode) {
-        throw new SessionWriterConflictError();
+        throw new SessionIdExistsError(argv['sessionId']);
       }
       writeStderrLine(message);
       process.exit(1);

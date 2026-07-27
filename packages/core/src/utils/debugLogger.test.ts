@@ -364,6 +364,19 @@ describe('debugLogger', () => {
       );
     });
 
+    it('creates the latest symlink for an agent-suffixed session id', async () => {
+      resetDebugLoggingState();
+      const sessionId = `${uuidSession.getSessionId()}-agent-worker.1`;
+
+      setDebugLogSession({ getSessionId: () => sessionId });
+      await vi.runAllTimersAsync();
+
+      expect(fs.symlink).toHaveBeenCalledWith(
+        `${sessionId}.txt`,
+        expectedLatestPath,
+      );
+    });
+
     it('does not create latest symlink when QWEN_DEBUG_LOG_FILE is unset', async () => {
       delete process.env['QWEN_DEBUG_LOG_FILE'];
       vi.clearAllMocks();

@@ -4,7 +4,9 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+import { SessionWriterConflictError } from '@qwen-code/qwen-code-core';
 import {
+  SessionNotFoundError,
   TotalSessionLimitExceededError,
   WorkspaceDrainingError,
   type BridgeFreshSessionAdmission,
@@ -14,6 +16,7 @@ import {
 
 interface SessionCountSource {
   readonly sessionCount: number;
+  readonly getSessionSummary: (sessionId: string) => unknown;
 }
 
 export interface TotalSessionAdmissionOptions {
@@ -43,6 +46,7 @@ export function createTotalSessionAdmissionController({
 }: TotalSessionAdmissionOptions): TotalSessionAdmissionController {
   let inFlight = 0;
   const inFlightByWorkspace = new Map<string, number>();
+  const inFlightSessionIds = new Set<string>();
   const drainingWorkspaces = new Set<string>();
   const limit =
     maxTotalSessions === undefined ||
@@ -58,6 +62,13 @@ export function createTotalSessionAdmissionController({
       if (drainingWorkspaces.has(context.workspaceCwd)) {
         throw new WorkspaceDrainingError(context.workspaceCwd);
       }
+      if (
+        context.sessionId &&
+        (inFlightSessionIds.has(context.sessionId) ||
+          hasLiveSession(getBridges(), context.sessionId))
+      ) {
+        throw new SessionWriterConflictError();
+      }
       if (limit !== Number.POSITIVE_INFINITY) {
         if (getLiveCount(getBridges()) + inFlight >= limit) {
           throw Object.assign(new TotalSessionLimitExceededError(limit), {
@@ -72,6 +83,7 @@ export function createTotalSessionAdmissionController({
       }
 
       inFlight++;
+      if (context.sessionId) inFlightSessionIds.add(context.sessionId);
       inFlightByWorkspace.set(
         context.workspaceCwd,
         (inFlightByWorkspace.get(context.workspaceCwd) ?? 0) + 1,
@@ -82,6 +94,7 @@ export function createTotalSessionAdmissionController({
           if (released) return;
           released = true;
           inFlight--;
+          if (context.sessionId) inFlightSessionIds.delete(context.sessionId);
           const workspaceInFlight =
             (inFlightByWorkspace.get(context.workspaceCwd) ?? 1) - 1;
           if (workspaceInFlight <= 0) {
@@ -118,4 +131,19 @@ export function createTotalSessionAdmissionController({
 
 function getLiveCount(bridges: readonly SessionCountSource[]): number {
   return bridges.reduce((sum, bridge) => sum + bridge.sessionCount, 0);
+}
+
+function hasLiveSession(
+  bridges: readonly SessionCountSource[],
+  sessionId: string,
+): boolean {
+  return bridges.some((bridge) => {
+    try {
+      bridge.getSessionSummary(sessionId);
+      return true;
+    } catch (error) {
+      if (error instanceof SessionNotFoundError) return false;
+      throw error;
+    }
+  });
 }

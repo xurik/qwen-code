@@ -46,6 +46,7 @@ import {
 } from './session-artifact-persistence.js';
 import { SessionOrganizationService } from './session-organization-service.js';
 import { SessionTranscriptTooLargeError } from './session-transcript-reader.js';
+import { isValidSessionFileName } from '../utils/session-id.js';
 
 const debugLogger = createDebugLogger('SESSION');
 
@@ -244,10 +245,9 @@ export const SESSION_TITLE_MAX_LENGTH = 200;
 
 /**
  * Pattern for validating session file names.
- * Session files are named as `${sessionId}.jsonl` where sessionId is a UUID-like identifier
- * (32-36 hex characters, optionally with hyphens).
+ * Session files are named as `${sessionId}.jsonl`, using either the legacy
+ * UUID-like identifier or the current UUID with an optional agent suffix.
  */
-const SESSION_FILE_PATTERN = /^[0-9a-fA-F-]{32,36}\.jsonl$/;
 /** Maximum number of lines to scan when looking for the first prompt text. */
 const MAX_PROMPT_SCAN_LINES = 10;
 /**
@@ -496,7 +496,7 @@ export class SessionService {
   }
 
   async getSessionLocation(sessionId: string): Promise<SessionLocation> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return undefined;
     }
 
@@ -713,7 +713,7 @@ export class SessionService {
     title?: string;
     source?: TitleSource;
   } {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return {};
     }
     const chatsDir = this.getChatsDir();
@@ -850,7 +850,7 @@ export class SessionService {
    * `sessionExistsInAnyState()` for archive-aware lookups.
    */
   async countSessionMessages(sessionId: string): Promise<number> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return 0;
     }
     const chatsDir = this.getChatsDir();
@@ -929,7 +929,7 @@ export class SessionService {
       const fileNames = fs.readdirSync(chatsDir);
       for (const name of fileNames) {
         // Only process files matching session file pattern
-        if (!SESSION_FILE_PATTERN.test(name)) continue;
+        if (!isValidSessionFileName(name)) continue;
         const filePath = path.join(chatsDir, name);
         try {
           const stats = fs.statSync(filePath);
@@ -1086,7 +1086,7 @@ export class SessionService {
     let truncated = false;
 
     for (const name of fileNames) {
-      if (!SESSION_FILE_PATTERN.test(name)) continue;
+      if (!isValidSessionFileName(name)) continue;
       if (filesProcessed >= MAX_FILES_TO_PROCESS) {
         truncated = true;
         break;
@@ -1184,7 +1184,7 @@ export class SessionService {
     sessionId: string,
     options: { maxBytes: number },
   ): Promise<ResumedSessionData | undefined> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return undefined;
     }
     const filePath = this.getSessionFilePath(sessionId, 'archived');
@@ -1350,7 +1350,7 @@ export class SessionService {
   }
 
   private async removeSessionFiles(sessionId: string): Promise<boolean> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return false;
     }
 
@@ -1409,7 +1409,7 @@ export class SessionService {
 
     for (const sessionId of [...new Set(sessionIds)]) {
       try {
-        if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+        if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
           notFound.push(sessionId);
           continue;
         }
@@ -1593,7 +1593,7 @@ export class SessionService {
     title: string,
     titleSource: TitleSource = 'manual',
   ): Promise<boolean> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return false;
     }
     const chatsDir = this.getChatsDir();
@@ -1667,10 +1667,10 @@ export class SessionService {
     sourceSessionId: string,
     newSessionId: string,
   ): Promise<{ filePath: string; copiedCount: number }> {
-    if (!SESSION_FILE_PATTERN.test(`${sourceSessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sourceSessionId}.jsonl`)) {
       throw new Error(`Invalid source sessionId: ${sourceSessionId}`);
     }
-    if (!SESSION_FILE_PATTERN.test(`${newSessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${newSessionId}.jsonl`)) {
       throw new Error(`Invalid new sessionId: ${newSessionId}`);
     }
 
@@ -1833,7 +1833,7 @@ export class SessionService {
    * `sessionExistsInAnyState()` for archive-aware lookups.
    */
   getSessionTitle(sessionId: string): string | undefined {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return undefined;
     }
     const chatsDir = this.getChatsDir();
@@ -1871,7 +1871,7 @@ export class SessionService {
 
     const files: Array<{ name: string; mtime: number }> = [];
     for (const name of fileNames) {
-      if (!SESSION_FILE_PATTERN.test(name)) continue;
+      if (!isValidSessionFileName(name)) continue;
       const filePath = path.join(chatsDir, name);
       try {
         const stats = fs.statSync(filePath);
@@ -1968,7 +1968,7 @@ export class SessionService {
 
     let filesProcessed = 0;
     for (const name of fileNames) {
-      if (!SESSION_FILE_PATTERN.test(name)) continue;
+      if (!isValidSessionFileName(name)) continue;
       if (filesProcessed >= MAX_FILES_TO_PROCESS) break;
       filesProcessed++;
 
@@ -2029,7 +2029,7 @@ export class SessionService {
    * `sessionExistsInAnyState()` for archive-aware lookups.
    */
   async sessionExists(sessionId: string): Promise<boolean> {
-    if (!SESSION_FILE_PATTERN.test(`${sessionId}.jsonl`)) {
+    if (!isValidSessionFileName(`${sessionId}.jsonl`)) {
       return false;
     }
     const chatsDir = this.getChatsDir();

@@ -51,6 +51,11 @@ export {
 // Output formatting
 export * from './output/json-formatter.js';
 export * from './output/types.js';
+export {
+  isValidSessionFileName,
+  isValidSessionId,
+  SESSION_ID_MAX_LENGTH,
+} from './utils/session-id.js';
 
 // ============================================================================
 // Core Engine

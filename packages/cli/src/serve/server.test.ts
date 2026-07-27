@@ -327,6 +327,7 @@ const EXPECTED_STAGE1_FEATURES = [
   'daemon_status',
   'capabilities',
   'session_create',
+  'session_id_override',
   'session_scope_override',
   'session_load',
   'session_resume',
@@ -8508,6 +8509,10 @@ describe('createServeApp', () => {
       ['non-string', 42],
       ['empty', ''],
       ['malformed', 'not-a-uuid'],
+      [
+        'overlong',
+        `123e4567-e89b-42d3-a456-426614174000-agent-${'a'.repeat(86)}`,
+      ],
     ])('400 for a %s sessionId', async (_label, sessionId) => {
       const bridge = fakeBridge();
       const app = createServeApp(

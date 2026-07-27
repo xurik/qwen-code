@@ -47,7 +47,7 @@ class DaemonSessionClientTest {
         server.setExecutor(serverExecutor);
         server.createContext("/capabilities", exchange -> sendJson(exchange, 200,
                 "{\"v\":1,\"mode\":\"http-bridge\",\"features\":["
-                        + "\"session_scope_override\",\"client_heartbeat\","
+                        + "\"session_scope_override\",\"session_id_override\",\"client_heartbeat\","
                         + "\"prompt_absolute_deadline\"],"
                         + "\"transports\":[\"rest\"]}"));
         server.createContext("/session", exchange -> {
@@ -183,6 +183,36 @@ class DaemonSessionClientTest {
         try (DaemonClient daemon = newClient()) {
             assertThrows(DaemonProtocolException.class, daemon::createSession);
             assertEquals(null, createBody.get());
+        }
+    }
+
+    @Test
+    void sendsRequestedSessionId() {
+        server.createContext("/session/session-1/detach", noContent());
+        String sessionId = "123e4567-e89b-42d3-a456-426614174000";
+
+        try (DaemonClient daemon = newClient();
+                DaemonSessionClient ignored = daemon.createSession(
+                        CreateSessionRequest.builder().sessionId(sessionId).build())) {
+            assertTrue(createBody.get().contains("\"sessionId\":\"" + sessionId + "\""));
+        }
+    }
+
+    @Test
+    void refusesRequestedSessionIdWithoutOverrideCapability() {
+        server.removeContext("/capabilities");
+        server.createContext("/capabilities", exchange -> sendJson(exchange, 200,
+                "{\"v\":1,\"mode\":\"http-bridge\",\"features\":["
+                        + "\"session_scope_override\"],\"transports\":[\"rest\"]}"));
+
+        try (DaemonClient daemon = newClient()) {
+            DaemonProtocolException failure = assertThrows(
+                    DaemonProtocolException.class,
+                    () -> daemon.createSession(CreateSessionRequest.builder()
+                            .sessionId("123e4567-e89b-42d3-a456-426614174000")
+                            .build()));
+            assertTrue(failure.getMessage().contains("session_id_override"));
+            assertNull(createBody.get());
         }
     }
 
